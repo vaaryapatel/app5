@@ -1,0 +1,173 @@
+from flask import Flask, request, render_template_string, redirect
+import psycopg2
+import os
+
+app = Flask(__name__)
+
+# ==============================
+# DATABASE CONNECTION (RENDER)
+# ==============================
+DATABASE_URL = "postgresql://studentdb_kjil_user:mGpjIVast0BQyq7uC6w3ipXXccN43Iou@dpg-d6jsu3lm5p6s73fstl80-a.singapore-postgres.render.com/studentdb_kjil"  
+# Example:
+# postgresql://user:password@host:5432/studentdb
+
+def get_connection():
+    return psycopg2.connect(DATABASE_URL, sslmode="require")
+
+
+# ==============================
+# CREATE TABLE IF NOT EXISTS
+# ==============================
+def create_table():
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS students (
+            id SERIAL PRIMARY KEY,
+            name VARCHAR(100),
+            sap_id VARCHAR(50),
+            roll_no VARCHAR(50),
+            phone VARCHAR(20),
+            email VARCHAR(100),
+            branch VARCHAR(100),
+            specialization VARCHAR(100)
+        );
+    """)
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+create_table()
+
+
+# ==============================
+# HTML TEMPLATE
+# ==============================
+HTML_PAGE = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Student Database</title>
+</head>
+<body>
+
+<h2>Add Student Details</h2>
+<form method="POST" action="/add">
+    Name: <input type="text" name="name" required><br><br>
+    SAP ID: <input type="text" name="sap_id" required><br><br>
+    Roll No: <input type="text" name="roll_no" required><br><br>
+    Phone: <input type="text" name="phone" required><br><br>
+    Email: <input type="email" name="email" required><br><br>
+    Branch: <input type="text" name="branch" required><br><br>
+    Specialization: <input type="text" name="specialization" required><br><br>
+    <button type="submit">Save</button>
+</form>
+
+<hr>
+
+<h2>Fetch Student Details</h2>
+<form method="POST" action="/fetch">
+    <select name="student_id">
+        {% for student in students %}
+            <option value="{{ student[0] }}">{{ student[1] }}</option>
+        {% endfor %}
+    </select>
+    <button type="submit">Get Details</button>
+</form>
+
+{% if details %}
+<hr>
+<h3>Student Details</h3>
+<p><b>Name:</b> {{ details[1] }}</p>
+<p><b>SAP ID:</b> {{ details[2] }}</p>
+<p><b>Roll No:</b> {{ details[3] }}</p>
+<p><b>Phone:</b> {{ details[4] }}</p>
+<p><b>Email:</b> {{ details[5] }}</p>
+<p><b>Branch:</b> {{ details[6] }}</p>
+<p><b>Specialization:</b> {{ details[7] }}</p>
+{% endif %}
+
+</body>
+</html>
+"""
+
+
+# ==============================
+# HOME ROUTE
+# ==============================
+@app.route("/")
+def home():
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("SELECT id, name FROM students ORDER BY id")
+    students = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    return render_template_string(HTML_PAGE, students=students)
+
+
+# ==============================
+# ADD STUDENT
+# ==============================
+@app.route("/add", methods=["POST"])
+def add_student():
+
+    data = (
+        request.form["name"],
+        request.form["sap_id"],
+        request.form["roll_no"],
+        request.form["phone"],
+        request.form["email"],
+        request.form["branch"],
+        request.form["specialization"]
+    )
+
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("""
+        INSERT INTO students
+        (name, sap_id, roll_no, phone, email, branch, specialization)
+        VALUES (%s, %s, %s, %s, %s, %s, %s)
+    """, data)
+
+    conn.commit()
+    cur.close()
+    conn.close()
+
+    return redirect("/")
+
+
+# ==============================
+# FETCH STUDENT
+# ==============================
+@app.route("/fetch", methods=["POST"])
+def fetch_student():
+
+    student_id = request.form["student_id"]
+
+    conn = get_connection()
+    cur = conn.cursor()
+
+    cur.execute("SELECT * FROM students WHERE id=%s", (student_id,))
+    details = cur.fetchone()
+
+    cur.execute("SELECT id, name FROM students ORDER BY id")
+    students = cur.fetchall()
+
+    cur.close()
+    conn.close()
+
+    return render_template_string(HTML_PAGE, students=students, details=details)
+
+
+# ==============================
+# RUN APP
+# ==============================
+if __name__ == "__main__":
+    app.run(debug=True)
